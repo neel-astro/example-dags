@@ -23,7 +23,6 @@ def simple_sleep():
     def sleep2() -> None:
         """Sleep for 20 seconds."""
         import time
-        print("hello")
 
         time.sleep(20)
         
