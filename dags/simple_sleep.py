@@ -30,6 +30,7 @@ def simple_sleep():
     def sleep3() -> None:
         """Sleep for 20 seconds."""
         import time
+        print("testing")
 
         time.sleep(20)
         
