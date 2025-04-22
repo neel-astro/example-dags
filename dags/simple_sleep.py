@@ -9,7 +9,7 @@ from pendulum import datetime
     catchup=False,
     doc_md=__doc__,
     default_args={"owner": "Neel", "retries": 3},
-    tags=["example2"],
+    tags=["example3"],
 )
 def simple_sleep():
     @task
