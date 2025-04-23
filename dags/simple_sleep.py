@@ -18,7 +18,7 @@ def simple_sleep():
         import time
         print("Running short on time, please work!!!!")
 
-        time.sleep(20)
+        time.sleep(30)
     
     @task
     def sleep2() -> None:
