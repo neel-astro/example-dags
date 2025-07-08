@@ -3,7 +3,6 @@ import datetime
 from airflow.decorators import dag
 from airflow.decorators import task
 
-
 @dag(start_date=datetime.datetime(2024, 10, 1), schedule=None, catchup=False)
 def dynamic_xcom():
     @task
