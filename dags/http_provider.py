@@ -6,6 +6,7 @@ from airflow.providers.standard.operators.python import PythonOperator
 # from airflow.sdk.exceptions import AirflowRuntimeError
 from pendulum import today
 
+
 from airflow.hooks.base import BaseHook
 from airflow.sdk import DAG
 from plugins import api_utility
