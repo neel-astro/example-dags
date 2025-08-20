@@ -11,7 +11,7 @@ from airflow.sensors.date_time import DateTimeSensorAsync
 def async_dag_1():
     DateTimeSensorAsync(
         task_id="async_task",
-        target_time="""{{ macros.datetime.utcnow() + macros.timedelta(seconds=30) }}""",
+        target_time="""{{ macros.datetime.utcnow() + macros.timedelta(seconds=10) }}""",
     )
 
 
