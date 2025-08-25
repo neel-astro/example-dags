@@ -9,7 +9,7 @@ Updated to use custom operator with operator link for xcom handling
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlencode
 
-from pendulum import datetime
+import pendulum
 from airflow.sdk import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.models.baseoperatorlink import BaseOperatorLink
@@ -39,14 +39,14 @@ class XComOperatorLink(BaseOperatorLink):
             'task_id': ti_key.task_id,
             'execution_date': ti_key.run_id,
         }
-        base_url = "s3://default@neel-test-s3/xcom/admin/airflow/xcom"
-        return f"{base_url}?{urlencode(params)}"
+        base_url = f"s3://default@neel-test-s3/xcom/admin/airflow/xcom/{ti_key.dag_id}/{ti_key.task_id}/{ti_key.run_id}"
+        return base_url
 
     @staticmethod
     def persist(context: Context) -> None:
         context["ti"].xcom_push(
             key="query_id",
-            value=datetime.now("UTC").to_iso8601_string(),
+            value=pendulum.now("UTC").to_iso8601_string(),
         )
 
 def xcom_operation_function(
@@ -146,17 +146,27 @@ def retrieve_all_xcom_values(**context) -> Dict[str, Any]:
         'task_3_0', 'task_3_1', 'task_3_2'
     ]
     
-    print(f"Retrieving XCom values from tasks: {all_task_ids}")
+    print(f"Retrieving query_id XCom values from tasks: {all_task_ids}")
     
     # Use ti.xcom_pull with task_ids list to get all values at once
-    all_xcom_values = ti.xcom_pull(task_ids=all_task_ids)
+    all_query_id_xcom_values = ti.xcom_pull(task_ids=all_task_ids, key="query_id")
     
-    print("Retrieved XCom values:")
-    for task_id, value in zip(all_task_ids, all_xcom_values):
+    print("Retrieved query_id XCom values:")
+    for task_id, value in zip(all_task_ids, all_query_id_xcom_values):
         print(f"  {task_id}: {value}")
     
     # Return as a dictionary for easier access
-    result = dict(zip(all_task_ids, all_xcom_values))
+    result = dict(zip(all_task_ids, all_query_id_xcom_values))
+
+    print(f"Retrieving return_value XCom values from tasks: {all_task_ids}")
+    
+    # Use ti.xcom_pull with task_ids list to get all values at once
+    all_return_value_xcom_values = ti.xcom_pull(task_ids=all_task_ids, key="return_value")
+    
+    print("Retrieved return_value XCom values:")
+    for task_id, value in zip(all_task_ids, all_return_value_xcom_values):
+        print(f"  {task_id}: {value}")
+    
     return result
 
 
@@ -200,11 +210,17 @@ class XComOperator(PythonOperator):
         
         super().__init__(**kwargs)
 
+    def execute(self, context: Context) -> Any:
+        result = super().execute(context)
+        operator_link = self.operator_extra_links[0]
+        operator_link.persist(context)
+        return result
+
 
 # Define the DAG
 dag = DAG(
     'dynamic_xcom_custom_operator',
-    start_date=datetime(2024, 10, 1),
+    start_date=pendulum.datetime(2024, 10, 1),
     schedule=None,  # Airflow 3 uses 'schedule' instead of 'schedule_interval'
     catchup=False,
     description='Dynamic XCom DAG using custom operator with operator links',
