@@ -16,28 +16,104 @@ from airflow.models.baseoperatorlink import BaseOperatorLink
 
 
 class XComOperatorLink(BaseOperatorLink):
-    """Custom operator link for XCom operations with enhanced viewing capabilities."""
+    """Custom operator link for XCom operations with enhanced viewing capabilities and persistence."""
     
     name = "XCom Values"
+    
+    # Class-level storage for persisted data (in production, this would be in a database or external storage)
+    _persisted_data = {}
+
+    def persist(self, task_id: str, dag_id: str, run_id: str, key: str, value: Any) -> str:
+        """
+        Persist data with task context for later retrieval via operator link.
+        
+        Args:
+            task_id: The task ID
+            dag_id: The DAG ID  
+            run_id: The run ID
+            key: Storage key for the data
+            value: Data to persist
+            
+        Returns:
+            Storage reference ID for the persisted data
+        """
+        storage_key = f"{dag_id}_{task_id}_{run_id}_{key}"
+        self._persisted_data[storage_key] = {
+            'value': value,
+            'task_id': task_id,
+            'dag_id': dag_id,
+            'run_id': run_id,
+            'key': key,
+            'timestamp': datetime.now().isoformat()
+        }
+        print(f"Persisted data with key: {storage_key}, value: {value}")
+        return storage_key
+
+    def retrieve_persisted(self, task_id: str, dag_id: str, run_id: str, key: str) -> Optional[Any]:
+        """
+        Retrieve persisted data using task context.
+        
+        Args:
+            task_id: The task ID
+            dag_id: The DAG ID
+            run_id: The run ID  
+            key: Storage key for the data
+            
+        Returns:
+            Retrieved data or None if not found
+        """
+        storage_key = f"{dag_id}_{task_id}_{run_id}_{key}"
+        persisted_item = self._persisted_data.get(storage_key)
+        if persisted_item:
+            print(f"Retrieved persisted data: {persisted_item['value']}")
+            return persisted_item['value']
+        else:
+            print(f"No persisted data found for key: {storage_key}")
+            return None
+
+    def get_persisted_metadata(self, task_id: str, dag_id: str, run_id: str, key: str) -> Optional[Dict[str, Any]]:
+        """
+        Get metadata about persisted data.
+        
+        Args:
+            task_id: The task ID
+            dag_id: The DAG ID
+            run_id: The run ID
+            key: Storage key for the data
+            
+        Returns:
+            Metadata dictionary or None if not found
+        """
+        storage_key = f"{dag_id}_{task_id}_{run_id}_{key}"
+        return self._persisted_data.get(storage_key)
 
     def get_link(self, operator: "PythonOperator", *, ti_key: "TaskInstanceKey") -> str:
         """
-        Generate a link to view XCom values for this task instance.
+        Generate a link to view XCom values for this task instance, including persisted data.
         
         Args:
             operator: The operator instance
             ti_key: TaskInstance key containing dag_id, task_id, run_id, etc.
             
         Returns:
-            URL string to view XCom values
+            URL string to view XCom values and persisted data
         """
-        # In a real implementation, this would link to your Airflow UI or custom dashboard
-        # For demo purposes, we'll create a parameterized link
+        # Check if there's persisted data for this task
+        storage_key = f"{ti_key.dag_id}_{ti_key.task_id}_{ti_key.run_id}_return_value"
+        has_persisted_data = storage_key in self._persisted_data
+        
+        # Create enhanced link with persisted data info
         params = {
             'dag_id': ti_key.dag_id,
             'task_id': ti_key.task_id,
             'execution_date': ti_key.run_id,
+            'has_persisted': 'true' if has_persisted_data else 'false'
         }
+        
+        if has_persisted_data:
+            params['persisted_count'] = len([k for k in self._persisted_data.keys() 
+                                           if k.startswith(f"{ti_key.dag_id}_{ti_key.task_id}_{ti_key.run_id}_")])
+        
         base_url = "/admin/airflow/xcom"
         return f"{base_url}?{urlencode(params)}"
 
@@ -215,6 +291,45 @@ task_4 = XComOperator(
     dag=dag
 )
 
+
+def pull_all_xcom_values(**context):
+    """
+    Simple function to pull XCom values from all previous tasks using ti.xcom_pull
+    """
+    ti = context['ti']
+    dag = context['dag']
+    
+    print("=== Pulling XCom values from all previous tasks ===")
+    
+    # Get all task IDs from the DAG (excluding the current task)
+    all_task_ids = [task.task_id for task in dag.task_dict.values() 
+                   if task.task_id != ti.task_id]
+    
+    all_xcom_values = {}
+    
+    for task_id in all_task_ids:
+        try:
+            # Pull XCom value with default key
+            value = ti.xcom_pull(task_ids=task_id, key='return_value')
+            all_xcom_values[task_id] = value
+            print(f"✅ {task_id}: {value}")
+        except Exception as e:
+            print(f"❌ Failed to pull from {task_id}: {e}")
+            all_xcom_values[task_id] = None
+    
+    print(f"\n📊 Summary: Retrieved {len([v for v in all_xcom_values.values() if v is not None])} values from {len(all_task_ids)} tasks")
+    print(f"📋 Complete XCom data: {all_xcom_values}")
+    
+    return all_xcom_values
+
+
+# Task 5: Pull all XCom values from previous tasks
+task_5_pull_all = PythonOperator(
+    task_id='task_5_pull_all_xcom',
+    python_callable=pull_all_xcom_values,
+    dag=dag
+)
+
 # Set up dependencies - task_1 to all task_2 instances
 for task_2 in task_2_configs:
     task_1 >> task_2
@@ -226,3 +341,6 @@ for task_2, task_3 in zip(task_2_configs, task_3_configs):
 # Connect each task_3 instance to task_4
 for task_3 in task_3_configs:
     task_3 >> task_4
+
+# Connect task_4 to task_5_pull_all so it runs after all other tasks
+task_4 >> task_5_pull_all
