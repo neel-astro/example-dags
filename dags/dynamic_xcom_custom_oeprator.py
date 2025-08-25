@@ -13,110 +13,41 @@ from pendulum import datetime
 from airflow.sdk import DAG
 from airflow.providers.standard.operators.python import PythonOperator
 from airflow.models.baseoperatorlink import BaseOperatorLink
+from airflow.utils.context import Context
 
 
 class XComOperatorLink(BaseOperatorLink):
-    """Custom operator link for XCom operations with enhanced viewing capabilities and persistence."""
+    """Custom operator link for XCom operations with enhanced viewing capabilities."""
     
     name = "XCom Values"
-    
-    # Class-level storage for persisted data (in production, this would be in a database or external storage)
-    _persisted_data = {}
-
-    def persist(self, task_id: str, dag_id: str, run_id: str, key: str, value: Any) -> str:
-        """
-        Persist data with task context for later retrieval via operator link.
-        
-        Args:
-            task_id: The task ID
-            dag_id: The DAG ID  
-            run_id: The run ID
-            key: Storage key for the data
-            value: Data to persist
-            
-        Returns:
-            Storage reference ID for the persisted data
-        """
-        storage_key = f"{dag_id}_{task_id}_{run_id}_{key}"
-        self._persisted_data[storage_key] = {
-            'value': value,
-            'task_id': task_id,
-            'dag_id': dag_id,
-            'run_id': run_id,
-            'key': key,
-            'timestamp': datetime.now().isoformat()
-        }
-        print(f"Persisted data with key: {storage_key}, value: {value}")
-        return storage_key
-
-    def retrieve_persisted(self, task_id: str, dag_id: str, run_id: str, key: str) -> Optional[Any]:
-        """
-        Retrieve persisted data using task context.
-        
-        Args:
-            task_id: The task ID
-            dag_id: The DAG ID
-            run_id: The run ID  
-            key: Storage key for the data
-            
-        Returns:
-            Retrieved data or None if not found
-        """
-        storage_key = f"{dag_id}_{task_id}_{run_id}_{key}"
-        persisted_item = self._persisted_data.get(storage_key)
-        if persisted_item:
-            print(f"Retrieved persisted data: {persisted_item['value']}")
-            return persisted_item['value']
-        else:
-            print(f"No persisted data found for key: {storage_key}")
-            return None
-
-    def get_persisted_metadata(self, task_id: str, dag_id: str, run_id: str, key: str) -> Optional[Dict[str, Any]]:
-        """
-        Get metadata about persisted data.
-        
-        Args:
-            task_id: The task ID
-            dag_id: The DAG ID
-            run_id: The run ID
-            key: Storage key for the data
-            
-        Returns:
-            Metadata dictionary or None if not found
-        """
-        storage_key = f"{dag_id}_{task_id}_{run_id}_{key}"
-        return self._persisted_data.get(storage_key)
 
     def get_link(self, operator: "PythonOperator", *, ti_key: "TaskInstanceKey") -> str:
         """
-        Generate a link to view XCom values for this task instance, including persisted data.
+        Generate a link to view XCom values for this task instance.
         
         Args:
             operator: The operator instance
             ti_key: TaskInstance key containing dag_id, task_id, run_id, etc.
             
         Returns:
-            URL string to view XCom values and persisted data
+            URL string to view XCom values
         """
-        # Check if there's persisted data for this task
-        storage_key = f"{ti_key.dag_id}_{ti_key.task_id}_{ti_key.run_id}_return_value"
-        has_persisted_data = storage_key in self._persisted_data
-        
-        # Create enhanced link with persisted data info
+        # In a real implementation, this would link to your Airflow UI or custom dashboard
+        # For demo purposes, we'll create a parameterized link
         params = {
             'dag_id': ti_key.dag_id,
             'task_id': ti_key.task_id,
             'execution_date': ti_key.run_id,
-            'has_persisted': 'true' if has_persisted_data else 'false'
         }
-        
-        if has_persisted_data:
-            params['persisted_count'] = len([k for k in self._persisted_data.keys() 
-                                           if k.startswith(f"{ti_key.dag_id}_{ti_key.task_id}_{ti_key.run_id}_")])
-        
-        base_url = "/admin/airflow/xcom"
+        base_url = "s3://default@neel-test-s3/xcom/admin/airflow/xcom"
         return f"{base_url}?{urlencode(params)}"
 
+    @staticmethod
+    def persist(context: Context) -> None:
+        context["ti"].xcom_push(
+            key="query_id",
+            value=datetime.now("UTC").to_iso8601_string(),
+        )
 
 def xcom_operation_function(
     operation_type: str,
@@ -193,6 +124,40 @@ def xcom_operation_function(
     
     else:
         raise ValueError(f"Unknown operation_type: {operation_type}")
+
+
+def retrieve_all_xcom_values(**context) -> Dict[str, Any]:
+    """
+    Custom function for task 4 to retrieve all XCom values from previous tasks.
+    Uses ti.xcom_pull(task_ids) to get all values at once.
+    
+    Args:
+        context: Airflow task context (automatically passed)
+        
+    Returns:
+        Dictionary containing all retrieved XCom values
+    """
+    ti = context['ti']
+    
+    # Get all previous task IDs
+    all_task_ids = [
+        'task_1',
+        'task_2_0', 'task_2_1', 'task_2_2',
+        'task_3_0', 'task_3_1', 'task_3_2'
+    ]
+    
+    print(f"Retrieving XCom values from tasks: {all_task_ids}")
+    
+    # Use ti.xcom_pull with task_ids list to get all values at once
+    all_xcom_values = ti.xcom_pull(task_ids=all_task_ids)
+    
+    print("Retrieved XCom values:")
+    for task_id, value in zip(all_task_ids, all_xcom_values):
+        print(f"  {task_id}: {value}")
+    
+    # Return as a dictionary for easier access
+    result = dict(zip(all_task_ids, all_xcom_values))
+    return result
 
 
 class XComOperator(PythonOperator):
@@ -283,50 +248,10 @@ for i, task_2_instance in enumerate(task_2_configs):
         )
     )
 
-# Task 4: Retrieve values from task_3
-task_4 = XComOperator(
+# Task 4: Retrieve values from all previous tasks using ti.xcom_pull(task_ids)
+task_4 = PythonOperator(
     task_id='task_4',
-    operation_type='retrieve',
-    upstream_task_ids=[task.task_id for task in task_3_configs],  # Extract task IDs from the operator objects
-    dag=dag
-)
-
-
-def pull_all_xcom_values(**context):
-    """
-    Simple function to pull XCom values from all previous tasks using ti.xcom_pull
-    """
-    ti = context['ti']
-    dag = context['dag']
-    
-    print("=== Pulling XCom values from all previous tasks ===")
-    
-    # Get all task IDs from the DAG (excluding the current task)
-    all_task_ids = [task.task_id for task in dag.task_dict.values() 
-                   if task.task_id != ti.task_id]
-    
-    all_xcom_values = {}
-    
-    for task_id in all_task_ids:
-        try:
-            # Pull XCom value with default key
-            value = ti.xcom_pull(task_ids=task_id, key='return_value')
-            all_xcom_values[task_id] = value
-            print(f"✅ {task_id}: {value}")
-        except Exception as e:
-            print(f"❌ Failed to pull from {task_id}: {e}")
-            all_xcom_values[task_id] = None
-    
-    print(f"\n📊 Summary: Retrieved {len([v for v in all_xcom_values.values() if v is not None])} values from {len(all_task_ids)} tasks")
-    print(f"📋 Complete XCom data: {all_xcom_values}")
-    
-    return all_xcom_values
-
-
-# Task 5: Pull all XCom values from previous tasks
-task_5_pull_all = PythonOperator(
-    task_id='task_5_pull_all_xcom',
-    python_callable=pull_all_xcom_values,
+    python_callable=retrieve_all_xcom_values,
     dag=dag
 )
 
@@ -338,9 +263,9 @@ for task_2 in task_2_configs:
 for task_2, task_3 in zip(task_2_configs, task_3_configs):
     task_2 >> task_3
 
-# Connect each task_3 instance to task_4
+# Connect all previous tasks to task_4
+task_1 >> task_4
+for task_2 in task_2_configs:
+    task_2 >> task_4
 for task_3 in task_3_configs:
     task_3 >> task_4
-
-# Connect task_4 to task_5_pull_all so it runs after all other tasks
-task_4 >> task_5_pull_all
