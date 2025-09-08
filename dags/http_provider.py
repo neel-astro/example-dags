@@ -13,6 +13,14 @@ from plugins import api_utility
 
 dag_name = "simple_http_operator"
 
+def my_dag_success_callback(context):
+    print("DAG succeeded!")
+    # Add custom logic here, e.g., send an email
+
+def my_dag_failure_callback(context):
+    print("DAG failed!")
+    # Add custom logic here, e.g., send a Slack notification
+
 
 def add_conn():
     try:
@@ -51,6 +59,8 @@ with DAG(
     dag_id=dag_name,
     start_date=today('UTC').add(days=-2),
     schedule=None,
+    on_success_callback=my_dag_success_callback,
+    on_failure_callback=my_dag_failure_callback,
     tags=["core"]
 ) as dag:
 
