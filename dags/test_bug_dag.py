@@ -1,5 +1,5 @@
 from airflow.decorators import dag, task
-from airflow.models.xcom import XCom
+
 
 @task
 def generate_data():
