@@ -9,9 +9,19 @@ from pendulum import today
 
 from airflow.hooks.base import BaseHook
 from airflow.sdk import DAG
-from plugins import api_utility
 
 dag_name = "simple_http_operator"
+
+def create_connection(request_body):
+    url = f"{base_url}/connections"
+    print(f"url is {url}")
+    headers = {
+        "accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {bearer_token}"
+    }
+    response = request(method='POST', url=url, headers=headers, json=request_body)
+    return response
 
 def my_dag_success_callback(context):
     print("DAG succeeded!")
@@ -40,7 +50,7 @@ def add_conn():
             "schema": "https",
             "port": 443
         }
-        response = api_utility.create_connection(request_body)
+        response = create_connection(request_body)
         assert response.json()['connection_id'] == f"{dag_name}_connection"
 
 
