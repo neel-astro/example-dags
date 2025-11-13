@@ -1,5 +1,5 @@
 from airflow.decorators import dag, task
-
+from pendulum import datetime
 
 
 # Define the basic parameters of the DAG, like schedule and start_date
@@ -21,7 +21,6 @@ def simple_sleep():
     def sleep1() -> None:
         """Sleep for 20 seconds."""
         import time
-        raise "Exception"
         print("Running short on time, please work!!!!")
 
         time.sleep(30)
