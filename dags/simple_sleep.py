@@ -8,7 +8,12 @@ from pendulum import datetime
     schedule="@daily",
     catchup=False,
     doc_md=__doc__,
-    default_args={"owner": "Neel", "retries": 3},
+    default_args={
+        "owner": "Neel", 
+        "retries": 1,
+        "email": ["airflow@example.com"],
+        "email_on_failure": True,
+    },
     tags=["example3"],
 )
 def simple_sleep():
@@ -16,6 +21,7 @@ def simple_sleep():
     def sleep1() -> None:
         """Sleep for 20 seconds."""
         import time
+        raise "Exception"
         print("Running short on time, please work!!!!")
 
         time.sleep(30)
