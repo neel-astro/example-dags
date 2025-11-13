@@ -10,7 +10,7 @@ from pendulum import datetime
     doc_md=__doc__,
     default_args={
         "owner": "Neel", 
-        "retries": 1,
+        "retries": 0,
         "email": ["airflow@example.com"],
         "email_on_failure": True,
     },
